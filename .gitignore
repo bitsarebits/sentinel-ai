@@ -1,0 +1,21 @@
+# C Artifacts
+engine/obj/
+engine/bin/
+*.o
+*.out
+*.exe
+
+# Python Artifacts
+__pycache__/
+*.pyc
+
+# Node/React Artifacts
+node_modules/
+dashboard/dist/
+
+# System
+.DS_Store
+.vscode/
+
+TODO.txt
+roadmap-sentinel-ai.pdf
