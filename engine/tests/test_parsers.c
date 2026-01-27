@@ -4,6 +4,7 @@
 #include "test_framework.h"
 #include "../include/protocol_defs.h"
 #include "../include/parser.h"
+#include "../include/collector.h"
 
 // ==========================================
 //   ETHERNET TESTS
@@ -204,27 +205,38 @@ void test_real_ipv4_logic()
 {
     printf("Testing Real IPv4 Logic...\n");
 
+    PacketFeatures features;
+    memset(&features, 0, sizeof(PacketFeatures));
+
     // CASE 1: Valid IPv4 Packet
-    // Ver=4, IHL=5 (20 bytes). Total Len irrelevant for this specific unit test unless checked.
-    uint8_t valid_packet[] = {
-        0x45, 0x00, 0x00, 0x20,
+    // We explicitly size the array to 28 bytes to hold IP(20) + UDP(8)
+    uint8_t valid_packet[28] = {
+        0x45, 0x00, 0x00, 0x1C, // Total Len 28 (0x001C)
         0x00, 0x00, 0x00, 0x00,
         0x40, 0x11, 0x00, 0x00, // Proto 17 (UDP)
         0x7F, 0x00, 0x00, 0x01,
-        0x7F, 0x00, 0x00, 0x01};
+        0x7F, 0x00, 0x00, 0x01
+        // Remaining 8 bytes are implicitly zeroed by C because we set size [28]
+    };
 
-    // Pass 20 bytes of length.
-    int result = parse_ipv4(valid_packet, 20);
+    // We must ensure the dummy UDP header has a valid length field to pass check.
+    // UDP Header format: [Src(2)][Dst(2)][Len(2)][Cks(2)]
+    // Offset is 20 (end of IP). Len is at offset 24.
+    valid_packet[24] = 0x00;
+    valid_packet[25] = 0x08; // Length 8
+
+    // Pass 28 bytes so parse_udp has data to read
+    int result = parse_ipv4(valid_packet, 28, &features);
     ASSERT_INT_EQ(0, result, "Real IPv4 Parser should accept valid packet");
 
     // CASE 2: Invalid Version (6)
     uint8_t invalid_ver[] = {0x60, 0x00, 0x00, 0x00};
-    result = parse_ipv4(invalid_ver, 4);
+    result = parse_ipv4(invalid_ver, 4, &features);
     ASSERT_INT_EQ(-1, result, "Real IPv4 Parser should REJECT Version 6");
 
     // CASE 3: Truncated Header
     // We pass a valid header start, but claim we only have 10 bytes available
-    result = parse_ipv4(valid_packet, 10);
+    result = parse_ipv4(valid_packet, 10, &features);
     ASSERT_INT_EQ(-1, result, "Real IPv4 Parser should REJECT truncated buffer");
 }
 
@@ -232,18 +244,22 @@ void test_real_udp_logic()
 {
     printf("Testing Real UDP Logic...\n");
 
+    // Dummy PacketFeatures to avoid SegFault
+    PacketFeatures features;
+    memset(&features, 0, sizeof(PacketFeatures));
+
     // CASE 1: Valid UDP
     // Src=53, Dst=53, Len=8, Cks=0
     uint8_t valid_udp[] = {
         0x00, 0x35, 0x00, 0x35,
         0x00, 0x08, 0x00, 0x00};
 
-    int result = parse_udp(valid_udp, 8);
+    int result = parse_udp(valid_udp, 8, &features);
     ASSERT_INT_EQ(0, result, "Real UDP Parser should accept valid header");
 
     // CASE 2: Truncated Buffer
     // We pass the valid packet, but say we only have 4 bytes
-    result = parse_udp(valid_udp, 4);
+    result = parse_udp(valid_udp, 4, &features);
     ASSERT_INT_EQ(-1, result, "Real UDP Parser should REJECT truncated buffer (<8 bytes)");
 
     // CASE 3: Logical Error (Declared Len < 8)
@@ -251,7 +267,7 @@ void test_real_udp_logic()
         0x00, 0x35, 0x00, 0x35,
         0x00, 0x04, 0x00, 0x00 // Declared Length is 4 (Impossible, header is 8)
     };
-    result = parse_udp(bad_len_udp, 8);
+    result = parse_udp(bad_len_udp, 8, &features);
     ASSERT_INT_EQ(-1, result, "Real UDP Parser should REJECT impossible declared length");
 }
 
@@ -259,29 +275,37 @@ void test_real_tcp_logic()
 {
     printf("Testing Real TCP Logic...\n");
 
+    // Dummy PacketFeatures to avoid SegFault
+    PacketFeatures features;
+    memset(&features, 0, sizeof(PacketFeatures));
+
     // CASE 1: Valid TCP (Standard 20 bytes)
     // Offset = 5 (0x50...) -> 20 bytes
     uint8_t valid_tcp[20] = {0}; // Zero init
     valid_tcp[12] = 0x50;        // Data Offset = 5
 
-    int result = parse_tcp(valid_tcp, 20);
+    int result = parse_tcp(valid_tcp, 20, &features);
     ASSERT_INT_EQ(0, result, "Real TCP Parser should accept valid standard header");
 
     // CASE 2: Truncated Buffer
-    result = parse_tcp(valid_tcp, 15);
+    result = parse_tcp(valid_tcp, 15, &features);
     ASSERT_INT_EQ(-1, result, "Real TCP Parser should REJECT truncated buffer");
 
     // CASE 3: Invalid Offset (Offset = 4 -> 16 bytes. TCP min is 20)
     uint8_t bad_offset_tcp[20] = {0};
     bad_offset_tcp[12] = 0x40; // Data Offset = 4
 
-    result = parse_tcp(bad_offset_tcp, 20);
+    result = parse_tcp(bad_offset_tcp, 20, &features);
     ASSERT_INT_EQ(-1, result, "Real TCP Parser should REJECT Data Offset < 5");
 }
 
 void test_real_ipv6_logic()
 {
     printf("Testing Real IPv6 Logic...\n");
+
+    // Dummy PacketFeatures to avoid SegFault
+    PacketFeatures features;
+    memset(&features, 0, sizeof(PacketFeatures));
 
     // CASE 1: Valid IPv6 Packet (Next Header = UDP)
     // 0x60000000 (Ver 6) | Payload Len 8 | Next Head 17 (UDP) | Hop 64
@@ -296,7 +320,7 @@ void test_real_ipv6_logic()
     // But parse_ipv6 only receives the IPv6 body part, so we pass 48 bytes available.
     // However, the function just needs to read the header first.
     // Let's pass 40 bytes just to test the header parsing itself.
-    int result = parse_ipv6(valid_packet, 40);
+    int result = parse_ipv6(valid_packet, 40, &features);
 
     // It might try to call parse_udp with 0 bytes remaining.
     // parse_udp checks length and returns -1 if < 8.
@@ -312,17 +336,17 @@ void test_real_ipv6_logic()
     full_packet[44] = 0x00;
     full_packet[45] = 0x08;
 
-    result = parse_ipv6(full_packet, 48);
+    result = parse_ipv6(full_packet, 48, &features);
     ASSERT_INT_EQ(0, result, "Real IPv6 Parser should accept valid packet");
 
     // CASE 2: Invalid Version (4 instead of 6)
     uint8_t invalid_ver[40] = {0};
     invalid_ver[0] = 0x40; // Version 4
-    result = parse_ipv6(invalid_ver, 40);
+    result = parse_ipv6(invalid_ver, 40, &features);
     ASSERT_INT_EQ(-1, result, "Real IPv6 Parser should REJECT Version 4");
 
     // CASE 3: Truncated
-    result = parse_ipv6(valid_packet, 20); // Only 20 bytes available
+    result = parse_ipv6(valid_packet, 20, &features); // Only 20 bytes available
     ASSERT_INT_EQ(-1, result, "Real IPv6 Parser should REJECT truncated buffer");
 }
 

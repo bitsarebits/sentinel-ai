@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include "protocol_defs.h"
+#include "collector.h"
 
 // --- Public Interface for the Analyzer ---
 
@@ -15,7 +16,7 @@
  * @param len  Total length of the captured packet in bytes.
  * @return 0 on success, -1 if the packet was malformed or unrecognizable.
  */
-int analyze_packet(const uint8_t *data, uint16_t len);
+int analyze_packet(const uint8_t *data, uint16_t len, PacketFeatures *features);
 
 /**
  * @brief Extract and log IPv4 details.
@@ -23,7 +24,7 @@ int analyze_packet(const uint8_t *data, uint16_t len);
  * @param remaining_len Safety check! How many bytes are left in the buffer?
  * @return 0 on success, -1 on failure (e.g. invalid version).
  */
-int parse_ipv4(const uint8_t *packet_body, uint16_t remaining_len);
+int parse_ipv4(const uint8_t *packet_body, uint16_t remaining_len, PacketFeatures *features);
 
 /**
  * @brief Extract and log IPv6 details.
@@ -31,7 +32,7 @@ int parse_ipv4(const uint8_t *packet_body, uint16_t remaining_len);
  * @param remaining_len Safety check! How many bytes are left in the buffer?
  * @return 0 on success, -1 on failure (e.g. invalid version).
  */
-int parse_ipv6(const uint8_t *packet_body, uint16_t remaining_len);
+int parse_ipv6(const uint8_t *packet_body, uint16_t remaining_len, PacketFeatures *features);
 
 /**
  * @brief Extract and log TCP details (Ports, Flags, Seq).
@@ -39,7 +40,7 @@ int parse_ipv6(const uint8_t *packet_body, uint16_t remaining_len);
  * @param remaining_len Safety check! How many bytes are left in the buffer?
  * @return 0 on success, -1 on failure (e.g. invalid version).
  */
-int parse_tcp(const uint8_t *segment, uint16_t remaining_len);
+int parse_tcp(const uint8_t *segment, uint16_t remaining_len, PacketFeatures *features);
 
 /**
  * @brief Extract and log UDP details.
@@ -47,6 +48,6 @@ int parse_tcp(const uint8_t *segment, uint16_t remaining_len);
  * @param remaining_len Safety check! How many bytes are left in the buffer?
  * @return 0 on success, -1 on failure (e.g. invalid version).
  */
-int parse_udp(const uint8_t *segment, uint16_t remaining_len);
+int parse_udp(const uint8_t *segment, uint16_t remaining_len, PacketFeatures *features);
 
 #endif

@@ -3,25 +3,34 @@
 # Compiler to use
 CC = gcc
 
-# Compiler Flags:
+# Base Compiler Flags (Common to both Debug and Release)
+# -D_DEFAULT_SOURCE: Fixes the "u_int" errors in libpcap
 # -Iinclude: Look for header files (.h) in the 'include' folder
 # -Wall -Wextra: Enable all warnings (helps find bugs)
 # -g: Add debug info (for GDB/Valgrind)
 # -pthread: Enable multithreading support
-CFLAGS = -Iinclude -Wall -Wextra -pthread -std=c99 -D_DEFAULT_SOURCE
+BASE_CFLAGS = -Iinclude -Wall -Wextra -pthread -std=c99 -D_DEFAULT_SOURCE
 
-# Default target (Release): MAx optimization (-03), no debug
-release: CFLAGS += -O3
-release: clean all
+# --- BUILD MODES ---
 
-# Debug target: Add debug info (-g), Defined DEBUG Macro (-DDEBUG), No optimization (-O0)
-debug: CFLAGS += -g -O0 -DDEBUG
-debug: clean all
+# Default CFLAGS = Debug Mode
+# We include -DDEBUG by default so 'make run' and 'make train' always show logs.
+CFLAGS = $(BASE_CFLAGS) -g -O0 -DDEBUG
 
 # Linker Flags:
 # -lpcap: Link against the libpcap library
 # -pthread: Link against the pthread library
 LDFLAGS = -lpcap -pthread
+
+# Release Target: Explicitly Overwrites CFLAGS
+# Usage: make release
+# This removes -DDEBUG, -g, and -O0, and adds -O3 for optimization.
+release: CFLAGS = $(BASE_CFLAGS) -O3
+release: clean all
+
+# Debug Target: Redundant, but kept for habit.
+# It ensures a clean build with default flags.
+debug: clean all
 
 # Directory Layout
 SRC_DIR = src
@@ -68,10 +77,21 @@ clean:
 	@echo "Cleaning up..."
 	rm -rf $(OBJ_DIR) $(BIN_DIR)
 
-# Run Rule: Compile and execute (with sudo for pcap)
+# Standard Run (Default: Sniffer Mode)
 run: all
-	@echo "Starting Sentinel AI..."
+	@echo "Starting Sentinel AI (Sniffer Mode)..."
 	sudo ./$(TARGET)
+
+# Data Collection Mode
+train: all
+	@echo "Starting Sentinel AI (Training Mode)..."
+	@echo "Writing data to training_data.csv..."
+	sudo ./$(TARGET) --train
+
+# Guard Mode (AI Inference)
+guard: all
+	@echo "Starting Sentinel AI (Guard Mode)..."
+	sudo ./$(TARGET) --guard
 
 
 # --- 4. Testing Rules ---

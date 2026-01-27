@@ -17,5 +17,8 @@ dashboard/dist/
 .DS_Store
 .vscode/
 
+# Train dataSet
+training_data.csv
+
 TODO.txt
 roadmap-sentinel-ai.pdf

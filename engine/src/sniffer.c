@@ -2,8 +2,10 @@
 #include <pcap.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include "sniffer.h"
 #include "utils.h"
+#include "ringBuffer.h"
 
 void *sniffer_thread(void *ring_buffer)
 {
@@ -146,6 +148,7 @@ void *sniffer_thread(void *ring_buffer)
     } while (!found);
 
     pcap_freealldevs(alldevsp);
+    PacketSlot slot;
     while (keep_running)
     {
         struct pcap_pkthdr *pcapHeader;
@@ -165,39 +168,13 @@ void *sniffer_thread(void *ring_buffer)
         {
             LOG("[SNIFFER] Packet captured! --> Captured Length: [%d] - Real Total Length: [%d]\n", pcapHeader->caplen, pcapHeader->len);
 
-            // Lock the mutex
-            pthread_mutex_lock(&rb->mutex);
+            // Prepare the slot on the stack
+            slot.ts = pcapHeader->ts;
+            slot.length = (pcapHeader->caplen > MAX_PACKET_SIZE) ? MAX_PACKET_SIZE : pcapHeader->caplen;
+            memcpy(slot.data, packageData, slot.length);
 
-            // Wait if the buffer is full
-            while (rb->count == QUEUE_SIZE && keep_running)
-                pthread_cond_wait(&rb->not_full, &rb->mutex);
-
-            // Check for shut down while waiting
-            if (!keep_running)
-            {
-
-                pthread_mutex_unlock(&rb->mutex);
-                break;
-            }
-
-            // We use a temporary variable to ensure we don't copy more than the slot can hold
-            uint32_t copy_len = pcapHeader->caplen;
-            if (copy_len > MAX_PACKET_SIZE)
-            {
-                copy_len = MAX_PACKET_SIZE;
-            }
-
-            // Write in the buffer
-            rb->buffer[rb->head].length = (uint16_t)copy_len;
-            memcpy(rb->buffer[rb->head].data, packageData, copy_len);
-
-            // Increment the counter and the pointer
-            rb->head = (rb->head + 1) % QUEUE_SIZE; // ring
-            rb->count++;
-
-            // Signal the Analyzer (consumer) and unlock the mutex
-            pthread_cond_signal(&rb->not_empty);
-            pthread_mutex_unlock(&rb->mutex);
+            // Push securely
+            ring_buffer_push(rb, &slot);
         }
     }
 

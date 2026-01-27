@@ -17,6 +17,24 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <pthread.h>
+#include <sys/time.h>
+
+// --- GLOBAL CONFIGURATION ---
+
+typedef enum SystemMode
+{
+    MODE_SNIFFER_ONLY, // Just print logs (Debug)
+    MODE_TRAINING,     // Write to CSV (Data Collection)
+    MODE_INFERENCE     // Run AI Model (Protection)
+} SystemMode;
+
+typedef struct AppConfig
+{
+    SystemMode mode;
+    // We can add more config here later (e.g., char *interface_name)
+} AppConfig;
+
+extern AppConfig global_config;
 
 // --- CONFIGURATION ---
 
@@ -31,6 +49,7 @@
  */
 typedef struct PacketSlot
 {
+    struct timeval ts;
     uint8_t data[MAX_PACKET_SIZE];
     uint16_t length; // Actual length of the captured data
 } PacketSlot;

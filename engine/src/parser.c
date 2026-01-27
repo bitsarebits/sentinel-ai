@@ -4,8 +4,9 @@
 #include "parser.h"
 #include "protocol_defs.h"
 #include "utils.h"
+#include "collector.h"
 
-int analyze_packet(const uint8_t *data, uint16_t len)
+int analyze_packet(const uint8_t *data, uint16_t len, PacketFeatures *features)
 {
     // Safety check: the packet is bit enough to have an Ethernet header?
     if (len < sizeof(EthernetHeader))
@@ -27,7 +28,7 @@ int analyze_packet(const uint8_t *data, uint16_t len)
     // Next layer
     if (ethertype == 0x0800)
     { // IPv4
-        return parse_ipv4(data + sizeof(EthernetHeader), len - sizeof(EthernetHeader));
+        return parse_ipv4(data + sizeof(EthernetHeader), len - sizeof(EthernetHeader), features);
     }
     else if (ethertype == 0x0806)
     {
@@ -35,7 +36,7 @@ int analyze_packet(const uint8_t *data, uint16_t len)
     }
     else if (ethertype == 0x86DD)
     {
-        return parse_ipv6(data + sizeof(EthernetHeader), len - sizeof(EthernetHeader));
+        return parse_ipv6(data + sizeof(EthernetHeader), len - sizeof(EthernetHeader), features);
     }
     else if (ethertype == 0x88E1)
     {
@@ -49,7 +50,7 @@ int analyze_packet(const uint8_t *data, uint16_t len)
     return 0;
 }
 
-int parse_ipv4(const uint8_t *packet_body, uint16_t remaining_len)
+int parse_ipv4(const uint8_t *packet_body, uint16_t remaining_len, PacketFeatures *features)
 {
     //  Minimum Standard Header Check
     if (remaining_len < sizeof(IPv4Header))
@@ -59,6 +60,9 @@ int parse_ipv4(const uint8_t *packet_body, uint16_t remaining_len)
     }
 
     IPv4Header *ip = (IPv4Header *)packet_body;
+
+    // Add the protocol to the PacketFeatures
+    features->protocol = ip->protocol;
 
     // Right shift 4 times to get the high 4 bits
     uint8_t version = ip->version_ihl >> 4;
@@ -100,10 +104,10 @@ int parse_ipv4(const uint8_t *packet_body, uint16_t remaining_len)
     switch (ip->protocol)
     {
     case 6: // TCP
-        parse_tcp(transport_segment, remaining_len - ip_header_len);
+        return parse_tcp(transport_segment, remaining_len - ip_header_len, features);
         break;
     case 17: // UDP
-        parse_udp(transport_segment, remaining_len - ip_header_len);
+        return parse_udp(transport_segment, remaining_len - ip_header_len, features);
         break;
     case 1: // ICMP
         LOG("  [ICMP] Protocol found.\n");
@@ -116,7 +120,7 @@ int parse_ipv4(const uint8_t *packet_body, uint16_t remaining_len)
     return 0;
 }
 
-int parse_ipv6(const uint8_t *packet_body, uint16_t remaining_len)
+int parse_ipv6(const uint8_t *packet_body, uint16_t remaining_len, PacketFeatures *features)
 {
     // Static Length Check (Fixed 40 bytes)
     if (remaining_len < sizeof(IPv6Header))
@@ -242,9 +246,13 @@ int parse_ipv6(const uint8_t *packet_body, uint16_t remaining_len)
     switch (next_header)
     {
     case 6: // TCP
-        return parse_tcp(transport_segment, transport_len);
+        // Add the protocol to the PacketFeatures
+        features->protocol = next_header;
+        return parse_tcp(transport_segment, transport_len, features);
     case 17: // UDP
-        return parse_udp(transport_segment, transport_len);
+        // Add the protocol to the PacketFeatures
+        features->protocol = next_header;
+        return parse_udp(transport_segment, transport_len, features);
     case 58: // ICMPv6
         LOG("  [ICMPv6] Control Message found.\n");
         return 0;
@@ -254,7 +262,7 @@ int parse_ipv6(const uint8_t *packet_body, uint16_t remaining_len)
     }
 }
 
-int parse_tcp(const uint8_t *segment, uint16_t remaining_len)
+int parse_tcp(const uint8_t *segment, uint16_t remaining_len, PacketFeatures *features)
 {
     //  Minimum Standard Header Check
     if (remaining_len < sizeof(TCPHeader))
@@ -288,6 +296,12 @@ int parse_tcp(const uint8_t *segment, uint16_t remaining_len)
         LOG("[ERROR] TCP Header truncated. Calc Len: %d, Actual: %d\n", tcp_header_len, remaining_len);
         return -1;
     }
+
+    // Add the protocol to the PacketFeatures
+    features->src_port = ntohs(tcp->src_port);
+    features->dest_port = ntohs(tcp->dest_port);
+    // 0x01FF isolates the lower 9 bits (The Flags)
+    features->tcp_flags = ntohs(tcp->data_offset_flags) & 0x01FF;
 
     LOG("--- TCP Header ---\n");
     LOG("Source Port: %u\n", ntohs(tcp->src_port)); // ntohs for 16 bit
@@ -328,7 +342,7 @@ int parse_tcp(const uint8_t *segment, uint16_t remaining_len)
     return 0;
 }
 
-int parse_udp(const uint8_t *segment, uint16_t remaining_len)
+int parse_udp(const uint8_t *segment, uint16_t remaining_len, PacketFeatures *features)
 {
     // Minimum Length Check
     if (remaining_len < sizeof(UDPHeader))
@@ -339,6 +353,11 @@ int parse_udp(const uint8_t *segment, uint16_t remaining_len)
 
     UDPHeader *udp = (UDPHeader *)segment;
     uint16_t declared_len = ntohs(udp->length);
+
+    // Add the protocol to the PacketFeatures
+    features->src_port = ntohs(udp->src_port);
+    features->dest_port = ntohs(udp->dest_port);
+    features->tcp_flags = 0;
 
     // Logical Consistency Check
     // The declared length in the UDP header includes the header itself (8 bytes).

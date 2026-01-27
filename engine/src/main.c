@@ -3,16 +3,22 @@
 #include <unistd.h>
 #include <signal.h>
 #include <pthread.h>
+#include <string.h>
 
 #include "common.h"
 #include "sniffer.h"
 #include "analyzer.h"
 #include "utils.h"
+#include "ringBuffer.h"
+#include "collector.h"
 
 // --- GLOBAL VARIABLES ---
 
 // Implementation of the extern declared in common.h
 volatile bool keep_running = true;
+
+// Define the global config
+AppConfig global_config = {.mode = MODE_SNIFFER_ONLY}; // Default
 
 /**
  * @brief Handles Ctrl+C (SIGINT) to allow graceful shutdown.
@@ -30,11 +36,44 @@ void handle_sigint(int sig)
     // waiting forever if no new packets arrive.
 }
 
+void print_usage()
+{
+    printf("Usage: sudo ./sentinel-engine [OPTION]\n");
+    printf("Options:\n");
+    printf("  --train    Run in Data Collection Mode (Save to CSV)\n");
+    printf("  --guard    Run in AI Inference Mode (Active Detection)\n");
+    printf("  (none)     Run in Sniffer/Debug Mode\n");
+}
+
 // --- MAIN ---
 
-int main()
+int main(int argc, char *argv[])
 {
     printf("=== Sentinel AI Engine Starting ===\n");
+
+    // Argument Parsing
+    if (argc > 1)
+    {
+        if (strcmp(argv[1], "--train") == 0)
+        {
+            global_config.mode = MODE_TRAINING;
+            printf("[CONFIG] Mode: TRAINING (Recording data...)\n");
+        }
+        else if (strcmp(argv[1], "--guard") == 0)
+        {
+            global_config.mode = MODE_INFERENCE;
+            printf("[CONFIG] Mode: GUARD (AI Active)\n");
+        }
+        else
+        {
+            print_usage();
+            return EXIT_FAILURE;
+        }
+    }
+    else
+    {
+        printf("[CONFIG] Mode: DEBUG (Sniffer Only)\n");
+    }
 
     // Setup Signal Handling
     signal(SIGINT, handle_sigint);
@@ -48,11 +87,26 @@ int main()
         return EXIT_FAILURE;
     }
 
+    // Initialize resources based on mode
+    if (global_config.mode == MODE_TRAINING)
+    {
+        if (collector_init("training_data.csv") != 0)
+        {
+            fprintf(stderr, "[MAIN] Error initializing the data collector\n");
+            free(rb);
+            return EXIT_FAILURE;
+        }
+    }
+
     // Initialize Synchronization Primitives
     // These must be init's before any thread touches them
     if (pthread_mutex_init(&rb->mutex, NULL) != 0)
     {
         fprintf(stderr, "[MAIN] CRITICAL: Mutex init failed\n");
+        if (global_config.mode == MODE_TRAINING)
+        {
+            collector_close();
+        }
         free(rb);
         return EXIT_FAILURE;
     }
@@ -60,6 +114,10 @@ int main()
     if (pthread_cond_init(&rb->not_empty, NULL) != 0 || pthread_cond_init(&rb->not_full, NULL) != 0)
     {
         fprintf(stderr, "[MAIN] CRITICAL: CondVar init failed\n");
+        if (global_config.mode == MODE_TRAINING)
+        {
+            collector_close();
+        }
         free(rb);
         return EXIT_FAILURE;
     }
@@ -78,6 +136,10 @@ int main()
     if (pthread_create(&sniffer_tid, NULL, sniffer_thread, (void *)rb) != 0)
     {
         fprintf(stderr, "[MAIN] Error creating Sniffer thread\n");
+        if (global_config.mode == MODE_TRAINING)
+        {
+            collector_close();
+        }
         free(rb);
         return EXIT_FAILURE;
     }
@@ -86,6 +148,10 @@ int main()
     if (pthread_create(&analyzer_tid, NULL, analyzer_thread, (void *)rb) != 0)
     {
         fprintf(stderr, "[MAIN] Error creating Analyzer thread\n");
+        if (global_config.mode == MODE_TRAINING)
+        {
+            collector_close();
+        }
         keep_running = false; // Stop sniffer
         pthread_join(sniffer_tid, NULL);
         return EXIT_FAILURE;
@@ -100,9 +166,11 @@ int main()
     LOG("[MAIN] All threads stopped. Cleaning up...\n");
 
     // Cleanup resources
-    pthread_mutex_destroy(&rb->mutex);
-    pthread_cond_destroy(&rb->not_empty);
-    pthread_cond_destroy(&rb->not_full);
+    if (global_config.mode == MODE_TRAINING)
+    {
+        collector_close();
+    }
+    ring_buffer_cleanup(rb);
     free(rb);
 
     printf("=== Sentinel AI Engine Shutdown Complete ===\n");
