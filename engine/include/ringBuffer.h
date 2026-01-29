@@ -16,8 +16,9 @@
  * Sets indices to 0 and initializes mutex and condition variables.
  *
  * @param rb Pointer to the RingBuffer to initialize.
+ * @return 0 on success, -1 on failure.
  */
-void ring_buffer_init(RingBuffer *rb);
+int ring_buffer_init(RingBuffer *rb);
 
 /**
  * @brief Cleans up Ring Buffer resources.

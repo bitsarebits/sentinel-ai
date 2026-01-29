@@ -87,6 +87,14 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    // Initialization (Encapsulated & Checked)
+    if (ring_buffer_init(rb) != 0)
+    {
+        fprintf(stderr, "[MAIN] CRITICAL: Failed to initialize RingBuffer sync primitives\n");
+        free(rb);
+        return EXIT_FAILURE;
+    }
+
     // Initialize resources based on mode
     if (global_config.mode == MODE_TRAINING)
     {
@@ -97,35 +105,6 @@ int main(int argc, char *argv[])
             return EXIT_FAILURE;
         }
     }
-
-    // Initialize Synchronization Primitives
-    // These must be init's before any thread touches them
-    if (pthread_mutex_init(&rb->mutex, NULL) != 0)
-    {
-        fprintf(stderr, "[MAIN] CRITICAL: Mutex init failed\n");
-        if (global_config.mode == MODE_TRAINING)
-        {
-            collector_close();
-        }
-        free(rb);
-        return EXIT_FAILURE;
-    }
-
-    if (pthread_cond_init(&rb->not_empty, NULL) != 0 || pthread_cond_init(&rb->not_full, NULL) != 0)
-    {
-        fprintf(stderr, "[MAIN] CRITICAL: CondVar init failed\n");
-        if (global_config.mode == MODE_TRAINING)
-        {
-            collector_close();
-        }
-        free(rb);
-        return EXIT_FAILURE;
-    }
-
-    // Initialize buffer indices
-    rb->head = 0;
-    rb->tail = 0;
-    rb->count = 0;
 
     LOG("[MAIN] Memory initialized. Buffer Size: %lu MB\n", sizeof(RingBuffer) / 1024 / 1024);
 

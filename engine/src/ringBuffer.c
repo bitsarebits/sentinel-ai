@@ -1,15 +1,40 @@
 #include "common.h"
+#include "ringBuffer.h"
 #include <string.h>
 #include <stdio.h>
 
-void ring_buffer_init(RingBuffer *rb)
+int ring_buffer_init(RingBuffer *rb)
 {
+    if (!rb)
+        return -1; // Safety check
+
     rb->head = 0;
     rb->tail = 0;
     rb->count = 0;
-    pthread_mutex_init(&rb->mutex, NULL);
-    pthread_cond_init(&rb->not_empty, NULL);
-    pthread_cond_init(&rb->not_full, NULL);
+
+    // Initialize Mutex
+    if (pthread_mutex_init(&rb->mutex, NULL) != 0)
+    {
+        return -1;
+    }
+
+    // Initialize Condition Variables
+    if (pthread_cond_init(&rb->not_empty, NULL) != 0)
+    {
+        // Cleanup the mutex we just created before failing
+        pthread_mutex_destroy(&rb->mutex);
+        return -1;
+    }
+
+    if (pthread_cond_init(&rb->not_full, NULL) != 0)
+    {
+        // Cleanup everything created so far
+        pthread_cond_destroy(&rb->not_empty);
+        pthread_mutex_destroy(&rb->mutex);
+        return -1;
+    }
+
+    return 0; // Success
 }
 
 void ring_buffer_cleanup(RingBuffer *rb)

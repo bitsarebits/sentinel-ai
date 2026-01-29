@@ -3,24 +3,34 @@
 # Compiler to use
 CC = gcc
 
+# Paths to ONNX Runtime
+# (Adjust this if your folder name is slightly different)
+ONNX_BASE = lib/onnxruntime-linux-x64-1.23.2
+ONNX_INC = $(ONNX_BASE)/include
+ONNX_LIB = $(ONNX_BASE)/lib
+
 # Base Compiler Flags (Common to both Debug and Release)
 # -D_DEFAULT_SOURCE: Fixes the "u_int" errors in libpcap
 # -Iinclude: Look for header files (.h) in the 'include' folder
 # -Wall -Wextra: Enable all warnings (helps find bugs)
 # -g: Add debug info (for GDB/Valgrind)
 # -pthread: Enable multithreading support
-BASE_CFLAGS = -Iinclude -Wall -Wextra -pthread -std=c99 -D_DEFAULT_SOURCE
+BASE_CFLAGS = -Iinclude -Wall -Wextra -pthread -std=c11 -D_DEFAULT_SOURCE -I$(ONNX_INC)
+
 
 # --- BUILD MODES ---
 
 # Default CFLAGS = Debug Mode
 # We include -DDEBUG by default so 'make run' and 'make train' always show logs.
+# -L$(ONNX_LIB) tells linker where to find .so files at build time
+# -lonnxruntime links the library
+# -Wl,-rpath,$(ONNX_LIB) tells the Linux loader where to find .so files at RUN time
 CFLAGS = $(BASE_CFLAGS) -g -O0 -DDEBUG
 
 # Linker Flags:
 # -lpcap: Link against the libpcap library
 # -pthread: Link against the pthread library
-LDFLAGS = -lpcap -pthread
+LDFLAGS = -lpcap -pthread -L$(ONNX_LIB) -lonnxruntime -Wl,-rpath,$(ONNX_LIB)
 
 # Release Target: Explicitly Overwrites CFLAGS
 # Usage: make release
@@ -124,9 +134,9 @@ $(TEST_PARSER_BIN): $(TEST_DIR)/test_parsers.c $(TEST_PARSER_DEPS)
 # Compile Ring Buffer Tests
 # Ring buffer needs common.h but the implementation is mostly header-based or in main (for now). 
 # If ringbuffer logic moves to a .c file, link it here too.
-$(TEST_RINGBUFFER_BIN): $(TEST_DIR)/test_ringbuffer.c $(OBJ_DIR)/utils.o
+$(TEST_RINGBUFFER_BIN): $(TEST_DIR)/test_ringbuffer.c $(OBJ_DIR)/ringBuffer.o $(OBJ_DIR)/utils.o
 	@echo "Compiling Ring Buffer Tests..."
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_ringbuffer.c $(OBJ_DIR)/utils.o -o $@ $(LDFLAGS)
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_ringbuffer.c $(OBJ_DIR)/ringBuffer.o $(OBJ_DIR)/utils.o -o $@ $(LDFLAGS)
 
 
 # Phony targets (not real files)
