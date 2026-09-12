@@ -6,6 +6,13 @@
 #include "parser.h"
 #include "collector.h"
 #include "ringBuffer.h"
+#include "ai_engine.h"
+
+// --- GLOBAL VARIABLES ---
+// Hardcoded from training
+// OLD: const float ANOMALY_THRESHOLD = 0.008596;
+// NEW: Tuned based on live observation (0.018 was the highest 'normal' noise)
+const float ANOMALY_THRESHOLD = 0.025;
 
 // --- ANALYZER THREAD ---
 
@@ -38,7 +45,7 @@ void *analyzer_thread(void *ring_buffer)
             features.timestamp = (double)slot.ts.tv_sec + (double)slot.ts.tv_usec / 1000000.0;
             features.packet_len = slot.length;
 
-            // 2. Route based on Mode
+            // Route based on Mode
             if (global_config.mode == MODE_TRAINING)
             {
                 // Feature needs timestamp!
@@ -46,7 +53,44 @@ void *analyzer_thread(void *ring_buffer)
             }
             else if (global_config.mode == MODE_INFERENCE)
             {
-                // Future AI call here
+                // AI inference
+
+                // If protocol is 0, it means we didn't parse a Transport Layer (ARP, ICMP, etc.)
+                // Don't waste CPU cycles or confuse the AI with this.
+                if (features.protocol == 0)
+                {
+                    continue;
+                }
+
+                // Analyze the packet with AI
+                float anomaly_score = ai_engine_predict(&features);
+
+                // Detect anomalies
+                if (anomaly_score < 0)
+                {
+                    LOG("[ANALYZER] AI Prediction Error.\n");
+                }
+                else if (anomaly_score > ANOMALY_THRESHOLD)
+                {
+                    // Use RED
+                    printf("\033[1;31m");
+                    printf("\n[!!!] ANOMALY DETECTED (Score: %.6f) [!!!]\n", anomaly_score);
+                    printf("---------------------------------------------\n");
+                    printf("Timestamp:  %.6f\n", features.timestamp); // Fixed format
+                    printf("Protocol:   %d\n", features.protocol);
+                    printf("Src Port:   %d\n", features.src_port);
+                    printf("Dst Port:   %d\n", features.dest_port);
+                    printf("Length:     %d bytes\n", features.packet_len);
+                    printf("Flags:      0x%02X\n", features.tcp_flags);
+                    printf("---------------------------------------------\n");
+                    printf("\033[0m");
+                }
+                else
+                {
+                    // Print "." for every normal packet to show life
+                    printf(".");
+                    fflush(stdout);
+                }
             }
         }
     }

@@ -59,21 +59,128 @@ void ai_engine_cleanup(void)
         g_ort->ReleaseEnv(g_env);
 }
 
+/**
+ * @brief Applies Min-Max normalization to a single feature.
+ *
+ * Implements the formula: X_norm = (X - min) / (max - min).
+ * Uses the hardcoded MIN_VALS and MAX_VALS arrays derived from the training set.
+ *
+ * @param feature The raw feature value (e.g., source port, protocol).
+ * @param normalized_feature Pointer to the float where the result will be stored.
+ * @param index The index (0-4) corresponding to the specific feature type.
+ * Crucial for selecting the correct min/max limits.
+ */
+void normalize_data(uint16_t feature, float *normalized_feature, int index)
+{
+    *normalized_feature = (feature - MIN_VALS[index]) / (MAX_VALS[index] - MIN_VALS[index]);
+}
+
 float ai_engine_predict(const PacketFeatures *features)
 {
-    // TODO: You implement this part!
-    // 1. Convert PacketFeatures to normalized float array[5]
-    // 2. Create Input Tensor
-    // 3. Run Inference
-    // 4. Calculate MSE (Input vs Output)
-    return 0.0f;
-}
-/*
-**Your Task:**
-1.  Create `include/ai_engine.h`.
-2.  Start `src/ai_engine.c` with the init/cleanup code.
-3.  **Try to write the logic for `ai_engine_predict`**.
-    * *Hint:* To normalize: `val = (val - min) / (max - min)`.
-    * *Hint:* `OrtCreateTensorWithDataAsOrtValue` is the function to create the input tensor.
 
-Go ahead and start coding! If you get stuck on the specific ONNX functions for prediction, just ask. */
+    // Initialize variables
+    OrtStatus *status = NULL;
+    OrtMemoryInfo *memory_info = NULL;
+    OrtValue *input_tensor = NULL;
+    OrtValue *output_tensor = NULL;
+    float mse = 0.0f;
+
+    // Normalize the data
+    float input_data[FEATURES_NUMBER];
+    normalize_data(features->protocol, &input_data[0], 0);
+    normalize_data(features->src_port, &input_data[1], 1);
+    normalize_data(features->dest_port, &input_data[2], 2);
+    normalize_data(features->packet_len, &input_data[3], 3);
+    normalize_data(features->tcp_flags, &input_data[4], 4);
+
+    // Create Memory Info
+    status = g_ort->CreateCpuMemoryInfo(
+        OrtArenaAllocator, // Allocator Type
+        OrtMemTypeDefault, // Memory Type
+        &memory_info       // Output Pointer
+    );
+    if (status != NULL)
+        goto error;
+
+    // Create Input Tensor
+    // Define Shape: [1, 5] (1 Packet, 5 Features)
+    const int64_t input_shape[] = {1, FEATURES_NUMBER};
+
+    status = g_ort->CreateTensorWithDataAsOrtValue(
+        memory_info,                         // Memory Info
+        input_data,                          // Raw Data Pointer
+        FEATURES_NUMBER * sizeof(float),     // Total Length in BYTES
+        input_shape,                         // Dimensions Array
+        2,                                   // Number of Dimensions
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, // Data Type
+        &input_tensor                        // Output Pointer
+    );
+    if (status != NULL)
+        goto error;
+
+    // Run Inference
+    // Note: We pass NULL for RunOptions to use defaults.
+    // Note: We pass &input_tensor because the API expects an array of tensors.
+    // Note: We cast &input_tensor to (const OrtValue* const*) to satisfy the strict API signature
+    status = g_ort->Run(
+        g_session,                              // The Session
+        NULL,                                   // Run Options
+        INPUT_NAMES,                            // Input Names Array
+        (const OrtValue *const *)&input_tensor, // Input Tensors Array
+        1,                                      // Number of Inputs
+        OUTPUT_NAMES,                           // Output Names Array
+        1,                                      // Number of Outputs
+        &output_tensor                          // Output Tensors Array (Result)
+    );
+
+    // Extract Output (tensor -> float[])
+    float *output_data_ptr = NULL;
+    // Get pointer to the raw float array INSIDE the tensor
+    status = g_ort->GetTensorMutableData(output_tensor, (void **)&output_data_ptr);
+    if (status != NULL)
+        goto error;
+
+    // Calculate MSE (Anomaly Score)
+    for (int i = 0; i < FEATURES_NUMBER; i++)
+    {
+        // (Input - Reconstructed)^2
+        float diff = input_data[i] - output_data_ptr[i];
+        mse += (diff * diff);
+    }
+    mse /= FEATURES_NUMBER;
+
+    // Cleanup
+    // Free the Output (The result of the inference)
+    if (output_tensor)
+        g_ort->ReleaseValue(output_tensor);
+
+    // Free the Input (The wrapper around your data)
+    if (input_tensor)
+        g_ort->ReleaseValue(input_tensor);
+
+    // Free the Configuration
+    if (memory_info)
+        g_ort->ReleaseMemoryInfo(memory_info);
+
+    return mse;
+
+end:
+    // --- CLEANUP RESOURCES ---
+    // Release in reverse order of creation
+    if (output_tensor)
+        g_ort->ReleaseValue(output_tensor);
+    if (input_tensor)
+        g_ort->ReleaseValue(input_tensor);
+    if (memory_info)
+        g_ort->ReleaseMemoryInfo(memory_info);
+
+    return mse;
+
+error:
+    // Log the error message from ONNX
+    const char *msg = g_ort->GetErrorMessage(status);
+    fprintf(stderr, "[AI ENGINE] Inference Failed: %s\n", msg);
+    g_ort->ReleaseStatus(status); // Must free the status object
+    mse = -1.0f;                  // Return error code
+    goto end;
+}

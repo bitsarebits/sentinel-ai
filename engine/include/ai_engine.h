@@ -33,7 +33,7 @@ int ai_engine_init(const char *model_path);
  * 4. Calculate MSE (Mean Squared Error) between Input and Output.
  *
  * @param features Pointer to the extracted packet features.
- * @return float The Anomaly Score (MSE). Compare this against the Threshold.
+ * @return float The Anomaly Score (MSE). -1.0f on Error.
  */
 float ai_engine_predict(const PacketFeatures *features);
 

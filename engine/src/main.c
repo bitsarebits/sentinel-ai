@@ -11,11 +11,15 @@
 #include "utils.h"
 #include "ringBuffer.h"
 #include "collector.h"
+#include "ai_engine.h"
 
 // --- GLOBAL VARIABLES ---
 
 // Implementation of the extern declared in common.h
 volatile bool keep_running = true;
+
+char *csv_filename = "../ai-model/data/training_data.csv";
+char *model_path = "../ai-model/models/sentinel.onnx";
 
 // Define the global config
 AppConfig global_config = {.mode = MODE_SNIFFER_ONLY}; // Default
@@ -98,9 +102,18 @@ int main(int argc, char *argv[])
     // Initialize resources based on mode
     if (global_config.mode == MODE_TRAINING)
     {
-        if (collector_init("training_data.csv") != 0)
+        if (collector_init(csv_filename) != 0)
         {
             fprintf(stderr, "[MAIN] Error initializing the data collector\n");
+            free(rb);
+            return EXIT_FAILURE;
+        }
+    }
+    else if (global_config.mode == MODE_INFERENCE)
+    {
+        if (ai_engine_init(model_path) != 0)
+        {
+            fprintf(stderr, "[MAIN] Error initializing the ai model\n");
             free(rb);
             return EXIT_FAILURE;
         }
@@ -148,6 +161,10 @@ int main(int argc, char *argv[])
     if (global_config.mode == MODE_TRAINING)
     {
         collector_close();
+    }
+    if (global_config.mode == MODE_INFERENCE)
+    {
+        ai_engine_cleanup();
     }
     ring_buffer_cleanup(rb);
     free(rb);

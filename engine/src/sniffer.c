@@ -117,7 +117,10 @@ void *sniffer_thread(void *ring_buffer)
         // Confirm
         printf("[SNIFFER] Selected %s. Confirm [y/n]: ", device->name);
         char confirm;
-        scanf(" %c", &confirm);
+        if (scanf(" %c", &confirm) != 1)
+        {
+            confirm = 'n'; // Default to 'no' on read error
+        }
         if (confirm != 'y' && confirm != 'Y')
         {
             continue; // Retry loop

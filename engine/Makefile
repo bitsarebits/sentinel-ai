@@ -28,8 +28,11 @@ BASE_CFLAGS = -Iinclude -Wall -Wextra -pthread -std=c11 -D_DEFAULT_SOURCE -I$(ON
 CFLAGS = $(BASE_CFLAGS) -g -O0 -DDEBUG
 
 # Linker Flags:
-# -lpcap: Link against the libpcap library
-# -pthread: Link against the pthread library
+# -lpcap: Link against the libpcap library (Packet Capture)
+# -pthread: Link against the POSIX threads library (Multithreading)
+# -L...: Tell the linker where to look for the ONNX .so files at build time
+# -lonnxruntime: Link against the libonnxruntime.so library
+# -Wl,-rpath...: Tell the Linux Loader where to find .so files at RUN time
 LDFLAGS = -lpcap -pthread -L$(ONNX_LIB) -lonnxruntime -Wl,-rpath,$(ONNX_LIB)
 
 # Release Target: Explicitly Overwrites CFLAGS

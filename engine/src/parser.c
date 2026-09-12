@@ -136,7 +136,9 @@ int parse_ipv6(const uint8_t *packet_body, uint16_t remaining_len, PacketFeature
 
     uint8_t version = (vtf >> 28) & 0x0F;
     uint8_t traffic_class = (vtf >> 20) & 0xFF;
+    (void)traffic_class;
     uint32_t flow_label = vtf & 0xFFFFF;
+    (void)flow_label;
 
     if (version != 6)
     {
@@ -148,6 +150,7 @@ int parse_ipv6(const uint8_t *packet_body, uint16_t remaining_len, PacketFeature
     uint16_t payload_len = ntohs(ip6->payload_len);
     uint8_t next_header = ip6->next_header;
     uint8_t hop_limit = ip6->hop_limit;
+    (void)hop_limit;
 
     LOG("--- IPv6 Header ---\n");
     LOG("Version:     %d\n", version);
@@ -320,6 +323,7 @@ int parse_tcp(const uint8_t *segment, uint16_t remaining_len, PacketFeatures *fe
     // 5. Extract Reserved (from bit 4 to 6)
     // Mask with 0x0E00 (binary 0000 1110 0000 0000)
     uint8_t reserved = (raw_offset_flags & 0x0E00) >> 9;
+    (void)reserved;
 
     LOG("Reserved: %u\n", reserved);
 

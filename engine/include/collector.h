@@ -15,16 +15,27 @@
 /**
  * @brief The Feature Vector extracted from a raw packet.
  * This structure corresponds to a single row in the CSV dataset.
+ * * @note AI MODEL INPUT ORDER:
+ * When passing data to the AI Engine, features must be normalized and
+ * packed into a tensor in this EXACT order:
+ * 1. protocol
+ * 2. src_port
+ * 3. dest_port
+ * 4. packet_len
+ * 5. tcp_flags
  */
 typedef struct PacketFeatures
 {
-    double timestamp;    // Time of capture (Epoch seconds.microseconds)
-    uint8_t protocol;    // Transport Protocol (6=TCP, 17=UDP)
-    uint16_t src_port;   // Source Port (Host Byte Order)
-    uint16_t dest_port;  // Destination Port (Host Byte Order)
-    uint16_t packet_len; // Total size of the packet (Header + Payload)
-    uint16_t tcp_flags;  // Bitmask of TCP Flags (SYN, ACK, FIN, etc.) - 0 for UDP
+    double timestamp;    // Time of capture (Epoch seconds.microseconds) - EXCLUDED from AI
+    uint8_t protocol;    // [Feature 1] Transport Protocol (6=TCP, 17=UDP)
+    uint16_t src_port;   // [Feature 2] Source Port (Host Byte Order)
+    uint16_t dest_port;  // [Feature 3] Destination Port (Host Byte Order)
+    uint16_t packet_len; // [Feature 4] Total size of the packet (Header + Payload)
+    uint16_t tcp_flags;  // [Feature 5] Bitmask of TCP Flags - 0 for UDP
 } PacketFeatures;
+
+// Number of features analyzed by the AI: entries of PacketFeatures - timestamp
+#define FEATURES_NUMBER 5
 
 /**
  * @brief Initializes the CSV file for writing.
