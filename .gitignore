@@ -10,8 +10,8 @@ test_ringbuffer
 *.exe
 
 # Build directories
-engine/obj/
-engine/bin/
+engine-c/obj/
+engine-c/bin/
 
 # Debug files
 *.dSYM/
@@ -23,7 +23,7 @@ engine/bin/
 
 # --- Libraries (External Dependencies) ---
 # ONNX Runtime library
-engine/lib/onnxruntime-*/
+engine-c/lib/onnxruntime-*/
 
 
 # --- AI Model (Python) ---
